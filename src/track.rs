@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 
 /// Handle to a Libass track object.
 #[derive(PartialEq, Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct Track<'lib> {
     track: *mut libass_sys::ASS_Track,
     phantom: PhantomData<libass_sys::ASS_Track>,
@@ -72,7 +73,7 @@ impl Track<'_> {
             Err(_) => Err(()),
         }
     }
-    
+
     /// Parse and process the Codec Private section of the subtitle stream in the Matroska format.
     ///
     /// Currently can only fail if provided a slice that cannot be indexed by an i32.
@@ -81,16 +82,20 @@ impl Track<'_> {
         // Safety:
         // Inspecting the C function, it soundly copies the data in to the library internals and
         // does not leak the reference.
-        
+
         match data.len().try_into() {
             Ok(length) => unsafe {
-                libass_sys::ass_process_codec_private(self.track, data.as_ptr().cast_mut() as _, length);
+                libass_sys::ass_process_codec_private(
+                    self.track,
+                    data.as_ptr().cast_mut() as _,
+                    length,
+                );
                 Ok(())
             },
             Err(_) => Err(()),
         }
     }
-    
+
     /// Parse a chuck of subtitle data that corresponds to exactly one Matroska event.
     ///
     /// TODO: Find a library the has some MKV types to feed this thing.
@@ -98,7 +103,13 @@ impl Track<'_> {
     #[allow(dead_code)]
     fn process_chunk(&self, data: &str, timestamp: i64, duration: i64) {
         unsafe {
-            libass_sys::ass_process_chunk(self.track, data.as_ptr().cast_mut() as _, data.len().try_into().unwrap(), timestamp, duration)
+            libass_sys::ass_process_chunk(
+                self.track,
+                data.as_ptr().cast_mut() as _,
+                data.len().try_into().unwrap(),
+                timestamp,
+                duration,
+            )
         }
     }
 }

@@ -1,4 +1,3 @@
-
 fn main() {
     /*
     let bindings = bindgen::Builder::default()

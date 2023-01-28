@@ -12,6 +12,7 @@ use std::{
 
 /// Libass Library instance
 #[derive(Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct Library {
     lib: *const ASS_Library,
     phan: PhantomData<ASS_Library>,
@@ -38,7 +39,7 @@ impl Library {
         let mut leaked_cb = ManuallyDrop::new(callback);
         let mut cb: &mut dyn Fn(LogLevel, &CStr) = &mut leaked_cb as &mut T as _;
         let cb = &mut cb;
-        
+
         // Safety: It is leaked and also static so it should last as long
         // as needed.
         unsafe {
@@ -55,7 +56,7 @@ impl Library {
         let mut buf: Option<NonNull<i32>> = None;
         let mut count = 0;
 
-        // Safety: 
+        // Safety:
         // Since we created the pointer we know that Libass has exclusive access to the
         // references provided. Also checked that the pointers aren't leaked anywhere.
         unsafe {
@@ -65,7 +66,7 @@ impl Library {
                 &mut count as _,
             )
         }
-        
+
         // So once returned we will see if null or not.
         // Safety: inspeting the source shows that it will either be null
         // or occupied.
@@ -87,7 +88,7 @@ impl Library {
     ///
     /// Libass copies the name so lifetime is managed for us.
     pub fn set_font_dir(&mut self, dir: &CStr) {
-        // Safety: 
+        // Safety:
         // Libass copies the string provided and doesn't leak the pointer at all.
         unsafe { libass_sys::ass_set_fonts_dir(self.lib.cast_mut(), dir.as_ptr()) }
     }
@@ -102,6 +103,7 @@ impl Library {
     where
         T: AsRef<CStr>,
     {
+        /// Cute trick to reduce compile times.
         fn inner_font(lib: &mut Library, name: &CStr, data: &[()]) {
             // Safety:
             // It copies the name and doesn't leak the pointer anywhere
