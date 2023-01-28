@@ -1,0 +1,24 @@
+[package]
+name = "Ferass"
+version = "0.1.0"
+edition = "2021"
+description = "Safe and egronomic bindings to Libass"
+repository = "https://github.com/RossSmyth/ferass"
+readme = "README.md"
+license = "BlueOak-1.0.0"
+
+excluse = [
+  "/.github/",
+]
+
+[lib]
+name = "ferass"
+
+[workspace]
+members = ["libass-sys"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+image = { version = "0.24.5", default-features = false }
+libass-sys = { version = "0.1.0", path = "libass-sys" }

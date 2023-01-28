@@ -1,0 +1,5 @@
+/libass-sys/target/
+/libass-sys/Cargo.lock
+/target/
+/doc/
+/Cargo.lock
