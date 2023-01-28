@@ -2,13 +2,15 @@
 //!
 use std::marker::PhantomData;
 
+use crate::library::Library;
+
 /// Handle to a Libass track object.
 #[derive(PartialEq, Debug)]
 #[allow(clippy::missing_docs_in_private_items)]
 pub struct Track<'lib> {
-    track: *mut libass_sys::ASS_Track,
-    phantom: PhantomData<libass_sys::ASS_Track>,
-    life: PhantomData<&'lib ()>,
+    pub(crate) track: *mut libass_sys::ASS_Track,
+    pub(crate) phantom: PhantomData<libass_sys::ASS_Track>,
+    pub(crate) lib: &'lib Library,
 }
 
 impl Track<'_> {

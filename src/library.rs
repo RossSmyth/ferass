@@ -10,41 +10,52 @@ use std::{
     mem::ManuallyDrop,
 };
 
+use crate::track::Track;
+
 /// Libass Library instance
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(clippy::missing_docs_in_private_items)]
 pub struct Library {
-    lib: *const ASS_Library,
+    lib: *mut ASS_Library,
     phan: PhantomData<ASS_Library>,
 }
 
 impl Library {
     /// Construct a new Libass library instance
-    pub fn new() -> Self {
+    ///
+    /// Returns None if allocation in library fails.
+    pub fn new() -> Option<Self> {
         // Safety: There is no global state this function acesses.
-        Self {
-            lib: unsafe { libass_sys::ass_library_init() },
-            phan: PhantomData,
+        let new = unsafe { libass_sys::ass_library_init() };
+
+        if new.is_null() {
+            None
+        } else {
+            Some(Self {
+                lib: new,
+                phan: PhantomData,
+            })
         }
     }
 
     /// Set callback for logging.
-    /// The callback lifetime should be tied to the library object
-    /// but I need to map out the lifetimes of everything first.
+    ///
+    /// May reference count this closure later, but making it static is easiest for now.
+    /// Since it shouldn't change often.
     pub fn set_message_cb<T>(&self, callback: T)
     where
-        T: Fn(LogLevel, &CStr) + Send + Sync,
+        T: Fn(LogLevel, &str) + Send + Sync,
         T: 'static,
     {
         let mut leaked_cb = ManuallyDrop::new(callback);
-        let mut cb: &mut dyn Fn(LogLevel, &CStr) = &mut leaked_cb as &mut T as _;
+        let mut cb: &mut dyn Fn(LogLevel, &str) = &mut leaked_cb as &mut T as _;
         let cb = &mut cb;
 
         // Safety: It is leaked and also static so it should last as long
         // as needed.
         unsafe {
             libass_sys::ass_set_message_cb(
-                self.lib.cast_mut(),
+                self.lib,
                 Some(message_handler),
                 cb as *mut _ as *mut c_void,
             )
@@ -61,7 +72,7 @@ impl Library {
         // references provided. Also checked that the pointers aren't leaked anywhere.
         unsafe {
             libass_sys::ass_get_available_font_providers(
-                self.lib.cast_mut(),
+                self.lib,
                 std::mem::transmute(&mut buf),
                 &mut count as _,
             )
@@ -77,9 +88,9 @@ impl Library {
     }
 
     /// Whether fonts should be extracted from the track data.
-    pub fn extract_fonts(&mut self, extract: bool) {
+    pub fn extract_fonts(&self, extract: bool) {
         // Safety: This is basically just a setter on the library handle.
-        unsafe { libass_sys::ass_set_extract_fonts(self.lib.cast_mut(), extract.into()) }
+        unsafe { libass_sys::ass_set_extract_fonts(self.lib, extract.into()) }
     }
 
     /// Set additional font directory for lookup.
@@ -87,10 +98,10 @@ impl Library {
     /// in the Libass documentation.
     ///
     /// Libass copies the name so lifetime is managed for us.
-    pub fn set_font_dir(&mut self, dir: &CStr) {
+    pub fn set_font_dir(&self, dir: &CStr) {
         // Safety:
         // Libass copies the string provided and doesn't leak the pointer at all.
-        unsafe { libass_sys::ass_set_fonts_dir(self.lib.cast_mut(), dir.as_ptr()) }
+        unsafe { libass_sys::ass_set_fonts_dir(self.lib, dir.as_ptr()) }
     }
 
     /// Load font in to library instance
@@ -99,18 +110,18 @@ impl Library {
     /// Internally Libass copies the string and the
     /// data so it manages the lifetimes.
     #[allow(dead_code, unused_variables, unreachable_code)]
-    fn add_font<T>(&mut self, name: T, data: &[()]) -> ()
+    fn add_font<T>(&self, name: T, data: &[()]) -> ()
     where
         T: AsRef<CStr>,
     {
         /// Cute trick to reduce compile times.
-        fn inner_font(lib: &mut Library, name: &CStr, data: &[()]) {
+        fn inner_font(lib: &Library, name: &CStr, data: &[()]) {
             // Safety:
             // It copies the name and doesn't leak the pointer anywhere
             // Data is also memcpy'd to the library through the handle.
             unsafe {
                 libass_sys::ass_add_font(
-                    lib.lib.cast_mut(),
+                    lib.lib,
                     name.as_ptr(),
                     data.as_ptr() as *const i8,
                     data.len().try_into().unwrap(),
@@ -129,18 +140,30 @@ impl Library {
     pub fn clear_fonts(self) -> Self {
         // Safety:
         // It frees memory in the library that was allocated within the library.
-        unsafe { libass_sys::ass_clear_fonts(self.lib.cast_mut()) }
+        unsafe { libass_sys::ass_clear_fonts(self.lib) }
         self
     }
 
     /// Register style overrides for this library instance.
     #[allow(dead_code, unreachable_code, unused_variables)]
-    fn style_overrides(&mut self, overrides: &()) {
+    fn style_overrides(&self, overrides: &()) {
         todo!("Make custom style override type");
         // Safety
         // It copies the overrides so it doesn't outlive the owner.
-        unsafe {
-            libass_sys::ass_set_style_overrides(self.lib.cast_mut(), overrides as *const () as _)
+        unsafe { libass_sys::ass_set_style_overrides(self.lib, overrides as *const () as _) }
+    }
+
+    /// Allocate new `Track` for a new subtitle stream.
+    pub fn new_track(&self) -> Option<Track> {
+        let new = unsafe { libass_sys::ass_new_track(self.lib) };
+        if new.is_null() {
+            None
+        } else {
+            Some(Track {
+                track: new,
+                lib: self,
+                phantom: PhantomData,
+            })
         }
     }
 }
@@ -149,7 +172,7 @@ impl Drop for Library {
     fn drop(&mut self) {
         // Safety:
         // :ferrisclueless:
-        unsafe { libass_sys::ass_library_done(self.lib.cast_mut()) }
+        unsafe { libass_sys::ass_library_done(self.lib) }
     }
 }
 
@@ -180,7 +203,15 @@ impl From<i32> for LogLevel {
     fn from(log_level: i32) -> Self {
         // Safety:
         // repr i32 & non_exhaustive should be enough I think.
-        unsafe { std::mem::transmute(log_level) }
+        match log_level {
+            0 => LogLevel::Fatal,
+            1 => LogLevel::Error,
+            2 => LogLevel::Warn,
+            4 => LogLevel::Info,
+            6 => LogLevel::Verbose,
+            7 => LogLevel::Debug,
+            _ => LogLevel::Application,
+        }
     }
 }
 
@@ -192,9 +223,25 @@ extern "C" fn message_handler(
     _: libass_sys::va_list,
     data: *mut c_void,
 ) {
-    let mess = unsafe { CStr::from_ptr(fmt) };
+    let mess = {
+        if fmt.is_null() {
+            // Safety:
+            // the string has a static lifetime and is valid UTF-8 (empty).
+            unsafe {
+                CStr::from_bytes_with_nul_unchecked(b"\0")
+                    .to_str()
+                    .unwrap_unchecked()
+            }
+        } else {
+            // Safety:
+            // I know that it will atleast live through 'a
+            // But I have no checked every log callsite so
+            // let's hope for the best that fmt is always valid.
+            unsafe { CStr::from_ptr(fmt).to_str().unwrap_or("") }
+        }
+    };
     let log_lev = level.into();
 
-    let closure: &mut &mut dyn Fn(LogLevel, &CStr) = unsafe { std::mem::transmute(data) };
+    let closure: &mut &mut dyn Fn(LogLevel, &str) = unsafe { std::mem::transmute(data) };
     closure(log_lev, mess)
 }
