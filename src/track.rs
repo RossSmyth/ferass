@@ -2,6 +2,8 @@
 //!
 use std::marker::PhantomData;
 
+use thiserror::Error;
+
 use crate::library::Library;
 
 /// Handle to a Libass track object.
@@ -38,7 +40,7 @@ impl Track<'_> {
         if code >= 0 {
             Ok(Style(code, self))
         } else {
-            Err(AllocError())
+            Err(AllocError("ass_alloc_style".to_string()))
         }
     }
 
@@ -49,7 +51,7 @@ impl Track<'_> {
         if code >= 0 {
             Ok(Event(code, self))
         } else {
-            Err(AllocError())
+            Err(AllocError("ass_alloc_event".to_string()))
         }
     }
 
@@ -72,7 +74,10 @@ impl Track<'_> {
                 libass_sys::ass_process_data(self.track, data.as_ptr().cast_mut() as _, length);
                 Ok(())
             },
-            Err(_) => Err(SliceTooLong()),
+            Err(_) => Err(SliceTooLong(
+                data.len().to_string(),
+                "ass_process_data".to_string(),
+            )),
         }
     }
 
@@ -94,7 +99,10 @@ impl Track<'_> {
                 );
                 Ok(())
             },
-            Err(_) => Err(SliceTooLong()),
+            Err(_) => Err(SliceTooLong(
+                data.len().to_string(),
+                "ass_process_codec_private".to_string(),
+            )),
         }
     }
 
@@ -129,12 +137,14 @@ impl Drop for Track<'_> {
 }
 
 /// Allocation failure in Libass
-#[derive(Debug)]
-pub struct AllocError();
+#[derive(Error, Debug)]
+#[error("Allocation failure in Libass function {0}")]
+pub struct AllocError(String);
 
 /// Slice that is too large for Libass to be able to index (i32)
-#[derive(Debug)]
-pub struct SliceTooLong();
+#[derive(Error, Debug)]
+#[error("Slice too long ({0}) for Libass indexing via i32 in {1}.")]
+pub struct SliceTooLong(String, String);
 
 #[derive(Debug)]
 #[repr(i32)]

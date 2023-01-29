@@ -1,8 +1,14 @@
 //! Renderer module
 //!
-use std::{ffi::CString, marker::PhantomData, mem::ManuallyDrop, path::PathBuf};
+use std::{
+    ffi::{CString, OsString},
+    marker::PhantomData,
+    mem::ManuallyDrop,
+    path::PathBuf,
+};
 
 use libass_sys;
+use thiserror::Error;
 
 use crate::{library::FontProvider, Library, Track};
 
@@ -349,15 +355,15 @@ bitflags::bitflags! {
 }
 
 /// Errors for leaking paths to create pointers.
-///
-/// TODO: Use thiserror
-#[derive(Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq)]
 pub enum PathErr {
     /// Returned if there is a zero value in the middle of the path.
-    NullInPath,
+    #[error("{0}")]
+    NullInPath(#[from] std::ffi::NulError),
     /// Returned if it's not UTF-8
     /// Because I don't want to deal with non-UTF-8 for now.
-    NotUtf8,
+    #[error("Invalid UTF-8 found in OsString \"{0:?}\"")]
+    NotUtf8(OsString),
 }
 
 /// Leaks a path an returns a pointer to it.
@@ -365,12 +371,12 @@ pub enum PathErr {
 fn path_to_ptr(path: PathBuf) -> Result<*const i8, PathErr> {
     match path.into_os_string().into_string() {
         Ok(utf) => {
-            let to_leak = CString::new(utf).map_err(|_| PathErr::NullInPath)?;
+            let to_leak = CString::new(utf)?;
             let out = to_leak.as_ptr();
             let _ = ManuallyDrop::new(to_leak);
             Ok(out)
         }
-        Err(_) => Err(PathErr::NotUtf8),
+        Err(osstr) => Err(PathErr::NotUtf8(osstr)),
     }
 }
 

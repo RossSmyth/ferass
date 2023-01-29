@@ -78,7 +78,7 @@ impl Library {
         unsafe {
             libass_sys::ass_get_available_font_providers(
                 self.lib,
-                std::mem::transmute(&mut out_ptr),
+                (&mut out_ptr as *mut Option<NonNull<i32>>).cast(),
                 &mut count as _,
             )
         }
@@ -91,7 +91,7 @@ impl Library {
                 let slice = unsafe { slice::from_raw_parts(out_buf.as_ptr().cast(), count) };
                 buf.extend_from_slice(slice);
                 unsafe {
-                    libc::free(std::mem::transmute(out_ptr));
+                    libc::free(out_buf.as_ptr().cast());
                 }
                 buf
             }
@@ -255,8 +255,16 @@ extern "C" fn message_handler(
     };
     let log_lev = level.into();
 
-    let closure: &mut &mut dyn Fn(LogLevel, &str) = unsafe { std::mem::transmute(data) };
-    closure(log_lev, mess)
+    // Safety:
+    // I believe this is correct because it has Send+Sync bounds, so it should be safe to call
+    // concurrently, though I do not believe Libass does? It may though. Libass keeps a pointer to
+    // the closure within itself, but it doesn't modify the data at all as it is a c_void.
+    let data = unsafe { data.cast::<&dyn Fn(LogLevel, &str)>().as_ref() };
+
+    if let Some(data_ref) = data {
+        let closure = data_ref;
+        closure(log_lev, mess)
+    }
 }
 
 /// Font provider to use for rendering.
