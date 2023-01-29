@@ -9,7 +9,8 @@
     clippy::cast_possible_wrap,
     clippy::cast_possible_truncation,
     clippy::print_stdout,
-    clippy::cast_sign_loss
+    clippy::cast_sign_loss,
+    clippy::missing_const_for_fn
 )]
 #![doc = include_str!("../README.md")]
 
