@@ -147,7 +147,7 @@ pub enum Feature {
     /// subtitles converted from another format, or which use libass for other
     /// purposes that do not involve actual ASS subtitles authored for
     /// distribution.
-    IncompatibleExtensions = 0,
+    IncompatibleExtensions = libass_sys::ASS_Feature::ASS_FEATURE_INCOMPATIBLE_EXTENSIONS,
     /// Match bracket pairs in bidirectional text according to the revised
     /// Unicode Bidirectional Algorithm introduced in Unicode 6.3.
     /// This is incompatible with VSFilter and disabled by default.
@@ -157,7 +157,7 @@ pub enum Feature {
     ///
     /// This feature may be unavailable at runtime (ass_track_set_feature
     /// may return -1) if libass was compiled against old FriBidi.
-    BidirectionalBrackets = 1,
+    BidirectionalBrackets = libass_sys::ASS_Feature::ASS_FEATURE_BIDI_BRACKETS,
     /// When this feature is disabled, text is split into VSFilter-compatible
     /// segments and text in each segment is processed in isolation.
     /// Notably, this includes running the Unicode Bidirectional
@@ -174,7 +174,7 @@ pub enum Feature {
     ///
     /// libass extensions to ASS such as Encoding -1 can cause individual
     /// events to be always processed as if this feature is enabled.:
-    WholeTextLayout = 2,
+    WholeTextLayout = libass_sys::ASS_Feature::ASS_FEATURE_WHOLE_TEXT_LAYOUT,
     /// Break lines according to the Unicode Line Breaking Algorithm.
     /// If the track language is set, some additional language-specific tweaks
     /// may be applied. Setting this enables more breaking opportunities
@@ -184,7 +184,7 @@ pub enum Feature {
     ///
     /// This feature may be unavailable at runtime if
     /// libass was compiled without libunibreak support.
-    WrapUnicode = 3,
+    WrapUnicode = libass_sys::ASS_Feature::ASS_FEATURE_WRAP_UNICODE,
 }
 
 /// Style for a track

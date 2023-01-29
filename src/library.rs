@@ -265,16 +265,16 @@ extern "C" fn message_handler(
 #[non_exhaustive]
 pub enum FontProvider {
     /// Don't use any default font provider for font lookup.
-    None = 0,
+    None = libass_sys::ASS_DefaultFontProvider::ASS_FONTPROVIDER_NONE,
     /// Use the first avaliable font provider.
     #[default]
-    Autodetect = 1,
+    Autodetect = libass_sys::ASS_DefaultFontProvider::ASS_FONTPROVIDER_AUTODETECT,
     /// Force Coretext (OSX Only)
-    CoreText = 2,
+    CoreText = libass_sys::ASS_DefaultFontProvider::ASS_FONTPROVIDER_CORETEXT,
     /// Force a Fontconfig-based font provider
-    Fontconfig = 3,
+    Fontconfig = libass_sys::ASS_DefaultFontProvider::ASS_FONTPROVIDER_FONTCONFIG,
     /// Force a DirectWrite-based font provider (Windows only)
-    DirectWrite = 4,
+    DirectWrite = libass_sys::ASS_DefaultFontProvider::ASS_FONTPROVIDER_DIRECTWRITE,
 }
 
 impl From<i32> for FontProvider {
