@@ -33,23 +33,23 @@ impl Track<'_> {
     }
 
     /// Allocate new style for track.
-    pub fn alloc_style(&self) -> Result<Style, ()> {
+    pub fn alloc_style(&self) -> Result<Style, AllocError> {
         let code = unsafe { libass_sys::ass_alloc_style(self.track) };
         if code >= 0 {
             Ok(Style(code, self))
         } else {
-            Err(())
+            Err(AllocError())
         }
     }
 
     /// Allocate new event handle
-    pub fn alloc_event(&self) -> Result<Event, ()> {
+    pub fn alloc_event(&self) -> Result<Event, AllocError> {
         let code = unsafe { libass_sys::ass_alloc_event(self.track) };
 
         if code >= 0 {
             Ok(Event(code, self))
         } else {
-            Err(())
+            Err(AllocError())
         }
     }
 
@@ -62,7 +62,7 @@ impl Track<'_> {
     ///
     /// Currently the only way this function can fail is if a slice that is too large to be indexed
     /// by an i32 is passed.
-    pub fn process_slice(&self, data: &str) -> Result<(), ()> {
+    pub fn process_slice(&self, data: &str) -> Result<(), SliceTooLong> {
         // Safety:
         // Inspecting the C function, it soundly copies the data over and does not leak the
         // reference.
@@ -72,7 +72,7 @@ impl Track<'_> {
                 libass_sys::ass_process_data(self.track, data.as_ptr().cast_mut() as _, length);
                 Ok(())
             },
-            Err(_) => Err(()),
+            Err(_) => Err(SliceTooLong()),
         }
     }
 
@@ -80,7 +80,7 @@ impl Track<'_> {
     ///
     /// Currently can only fail if provided a slice that cannot be indexed by an i32.
     #[allow(dead_code)]
-    fn process_codec_private(&self, data: &str) -> Result<(), ()> {
+    fn process_codec_private(&self, data: &str) -> Result<(), SliceTooLong> {
         // Safety:
         // Inspecting the C function, it soundly copies the data in to the library internals and
         // does not leak the reference.
@@ -94,7 +94,7 @@ impl Track<'_> {
                 );
                 Ok(())
             },
-            Err(_) => Err(()),
+            Err(_) => Err(SliceTooLong()),
         }
     }
 
@@ -127,6 +127,14 @@ impl Drop for Track<'_> {
         unsafe { libass_sys::ass_free_track(self.track) }
     }
 }
+
+/// Allocation failure in Libass
+#[derive(Debug)]
+pub struct AllocError();
+
+/// Slice that is too large for Libass to be able to index (i32)
+#[derive(Debug)]
+pub struct SliceTooLong();
 
 #[derive(Debug)]
 #[repr(i32)]

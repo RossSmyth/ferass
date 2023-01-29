@@ -63,9 +63,14 @@ impl Library {
     }
 
     /// Get the avaliable font providers
-    pub fn get_avaliable_font_providers(&self) -> &'static [i32] {
-        let mut buf: Option<NonNull<i32>> = None;
+    /// TODO: if allocator API is real then use it here because Libass allocates the array with the
+    /// system allocator, which we are not guarenteed to be using.
+    pub fn get_avaliable_font_providers(&self) -> Vec<FontProvider> {
+        // Out pointers to pass to Libass.
+        // This pointer is to an array. It is allocated by the system allocator.
+        let mut out_ptr: Option<NonNull<i32>> = None;
         let mut count = 0;
+        let mut buf = Vec::new();
 
         // Safety:
         // Since we created the pointer we know that Libass has exclusive access to the
@@ -73,7 +78,7 @@ impl Library {
         unsafe {
             libass_sys::ass_get_available_font_providers(
                 self.lib,
-                std::mem::transmute(&mut buf),
+                std::mem::transmute(&mut out_ptr),
                 &mut count as _,
             )
         }
@@ -81,9 +86,16 @@ impl Library {
         // So once returned we will see if null or not.
         // Safety: inspeting the source shows that it will either be null
         // or occupied.
-        match buf {
-            Some(buf) => unsafe { slice::from_raw_parts(buf.as_ptr().cast(), count) },
-            None => &[],
+        match out_ptr {
+            Some(out_buf) => {
+                let slice = unsafe { slice::from_raw_parts(out_buf.as_ptr().cast(), count) };
+                buf.extend_from_slice(slice);
+                unsafe {
+                    libc::free(std::mem::transmute(out_ptr));
+                }
+                buf
+            }
+            None => buf,
         }
     }
 
@@ -145,6 +157,8 @@ impl Library {
     }
 
     /// Register style overrides for this library instance.
+    /// TODO: Actually implement this.
+    /// Need to make some type for overrides.
     #[allow(dead_code, unreachable_code, unused_variables)]
     fn style_overrides(&self, overrides: &()) {
         todo!("Make custom style override type");
@@ -179,7 +193,7 @@ impl Drop for Library {
 /// The Libass loglevel.
 /// Anthing less than 5 is reported to stderr if
 /// a callback is not registered with `Library::set_message_cb`
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, PartialEq, PartialOrd, Copy, Clone)]
 #[non_exhaustive]
 #[repr(i32)]
 pub enum LogLevel {
@@ -192,6 +206,7 @@ pub enum LogLevel {
     /// Reported to stderr
     Info = 4,
     /// The recommended level for applications to use. Not reported to stderr.
+    #[default]
     Application = 5,
     /// Not reported to stderr
     Verbose = 6,
@@ -201,8 +216,6 @@ pub enum LogLevel {
 
 impl From<i32> for LogLevel {
     fn from(log_level: i32) -> Self {
-        // Safety:
-        // repr i32 & non_exhaustive should be enough I think.
         match log_level {
             0 => LogLevel::Fatal,
             1 => LogLevel::Error,
@@ -244,4 +257,36 @@ extern "C" fn message_handler(
 
     let closure: &mut &mut dyn Fn(LogLevel, &str) = unsafe { std::mem::transmute(data) };
     closure(log_lev, mess)
+}
+
+/// Font provider to use for rendering.
+#[repr(i32)]
+#[derive(Debug, Default, PartialEq, Copy, Clone, PartialOrd)]
+#[non_exhaustive]
+pub enum FontProvider {
+    /// Don't use any default font provider for font lookup.
+    None = 0,
+    /// Use the first avaliable font provider.
+    #[default]
+    Autodetect = 1,
+    /// Force Coretext (OSX Only)
+    CoreText = 2,
+    /// Force a Fontconfig-based font provider
+    Fontconfig = 3,
+    /// Force a DirectWrite-based font provider (Windows only)
+    DirectWrite = 4,
+}
+
+impl From<i32> for FontProvider {
+    fn from(value: i32) -> Self {
+        use libass_sys::ASS_DefaultFontProvider::*;
+        use FontProvider::*;
+        match value {
+            ASS_FONTPROVIDER_AUTODETECT => Autodetect,
+            ASS_FONTPROVIDER_CORETEXT => CoreText,
+            ASS_FONTPROVIDER_FONTCONFIG => Fontconfig,
+            ASS_FONTPROVIDER_DIRECTWRITE => DirectWrite,
+            _ => None,
+        }
+    }
 }

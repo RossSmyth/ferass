@@ -11,8 +11,13 @@
     clippy::print_stdout,
     clippy::cast_sign_loss
 )]
-//! Safe Libass bindings for Rust
-//!
+
+#![doc = include_str!("../README.md")]
 
 pub mod library;
+pub mod render;
 pub mod track;
+
+pub use library::Library;
+pub use track::Track;
+pub use render::{Renderer, RendererConfig};
