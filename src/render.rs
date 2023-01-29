@@ -4,7 +4,7 @@ use std::{ffi::CString, marker::PhantomData, mem::ManuallyDrop, path::PathBuf};
 
 use libass_sys;
 
-use crate::{FontProvider, Library, Track};
+use crate::{library::FontProvider, Library, Track};
 
 /// Handle to a Libass rendering instance.
 ///

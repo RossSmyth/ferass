@@ -24,7 +24,7 @@ jobs:
     - run: rustup component add rustfmt
     - run: cargo fmt --all --check
 
-  clippy:
+  clippy_check:
 
     runs-on: ubuntu-latest
 
