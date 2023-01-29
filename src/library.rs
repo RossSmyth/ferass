@@ -16,7 +16,7 @@ use crate::track::Track;
 #[derive(Debug, PartialEq)]
 #[allow(clippy::missing_docs_in_private_items)]
 pub struct Library {
-    lib: *mut ASS_Library,
+    lib: NonNull<ASS_Library>,
     phan: PhantomData<ASS_Library>,
 }
 
@@ -26,16 +26,12 @@ impl Library {
     /// Returns None if allocation in library fails.
     pub fn new() -> Option<Self> {
         // Safety: There is no global state this function acesses.
-        let new = unsafe { libass_sys::ass_library_init() };
+        let new = NonNull::new(unsafe { libass_sys::ass_library_init() })?;
 
-        if new.is_null() {
-            None
-        } else {
-            Some(Self {
-                lib: new,
-                phan: PhantomData,
-            })
-        }
+        Some(Self {
+            lib: new,
+            phan: PhantomData,
+        })
     }
 
     /// Set callback for logging.
@@ -55,7 +51,7 @@ impl Library {
         // as needed.
         unsafe {
             libass_sys::ass_set_message_cb(
-                self.lib,
+                self.lib.as_ptr(),
                 Some(message_handler),
                 cb as *mut _ as *mut c_void,
             )
@@ -77,7 +73,7 @@ impl Library {
         // references provided. Also checked that the pointers aren't leaked anywhere.
         unsafe {
             libass_sys::ass_get_available_font_providers(
-                self.lib,
+                self.lib.as_ptr(),
                 (&mut out_ptr as *mut Option<NonNull<i32>>).cast(),
                 &mut count as _,
             )
@@ -102,7 +98,7 @@ impl Library {
     /// Whether fonts should be extracted from the track data.
     pub fn extract_fonts(&self, extract: bool) {
         // Safety: This is basically just a setter on the library handle.
-        unsafe { libass_sys::ass_set_extract_fonts(self.lib, extract.into()) }
+        unsafe { libass_sys::ass_set_extract_fonts(self.lib.as_ptr(), extract.into()) }
     }
 
     /// Set additional font directory for lookup.
@@ -113,7 +109,7 @@ impl Library {
     pub fn set_font_dir(&self, dir: &CStr) {
         // Safety:
         // Libass copies the string provided and doesn't leak the pointer at all.
-        unsafe { libass_sys::ass_set_fonts_dir(self.lib, dir.as_ptr()) }
+        unsafe { libass_sys::ass_set_fonts_dir(self.lib.as_ptr(), dir.as_ptr()) }
     }
 
     /// Load font in to library instance
@@ -133,7 +129,7 @@ impl Library {
             // Data is also memcpy'd to the library through the handle.
             unsafe {
                 libass_sys::ass_add_font(
-                    lib.lib,
+                    lib.lib.as_ptr(),
                     name.as_ptr(),
                     data.as_ptr() as *const i8,
                     data.len().try_into().unwrap(),
@@ -152,7 +148,7 @@ impl Library {
     pub fn clear_fonts(self) -> Self {
         // Safety:
         // It frees memory in the library that was allocated within the library.
-        unsafe { libass_sys::ass_clear_fonts(self.lib) }
+        unsafe { libass_sys::ass_clear_fonts(self.lib.as_ptr()) }
         self
     }
 
@@ -164,21 +160,19 @@ impl Library {
         todo!("Make custom style override type");
         // Safety
         // It copies the overrides so it doesn't outlive the owner.
-        unsafe { libass_sys::ass_set_style_overrides(self.lib, overrides as *const () as _) }
+        unsafe {
+            libass_sys::ass_set_style_overrides(self.lib.as_ptr(), overrides as *const () as _)
+        }
     }
 
     /// Allocate new `Track` for a new subtitle stream.
     pub fn new_track(&self) -> Option<Track> {
-        let new = unsafe { libass_sys::ass_new_track(self.lib) };
-        if new.is_null() {
-            None
-        } else {
-            Some(Track {
-                track: new,
-                lib: self,
-                phantom: PhantomData,
-            })
-        }
+        let new = NonNull::new(unsafe { libass_sys::ass_new_track(self.lib.as_ptr()) })?;
+        Some(Track {
+            track: new,
+            lib: self,
+            phantom: PhantomData,
+        })
     }
 }
 
@@ -186,7 +180,7 @@ impl Drop for Library {
     fn drop(&mut self) {
         // Safety:
         // :ferrisclueless:
-        unsafe { libass_sys::ass_library_done(self.lib) }
+        unsafe { libass_sys::ass_library_done(self.lib.as_ptr()) }
     }
 }
 

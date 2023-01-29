@@ -1,6 +1,6 @@
 //! Libass track handle methods
 //!
-use std::marker::PhantomData;
+use std::{marker::PhantomData, ptr::NonNull};
 
 use thiserror::Error;
 
@@ -10,7 +10,7 @@ use crate::library::Library;
 #[derive(PartialEq, Debug)]
 #[allow(clippy::missing_docs_in_private_items)]
 pub struct Track<'lib> {
-    pub(crate) track: *mut libass_sys::ASS_Track,
+    pub(crate) track: NonNull<libass_sys::ASS_Track>,
     pub(crate) phantom: PhantomData<libass_sys::ASS_Track>,
     pub(crate) lib: &'lib Library,
 }
@@ -18,15 +18,16 @@ pub struct Track<'lib> {
 impl Track<'_> {
     /// Explicilty processes styles that have been overridden.
     pub fn force_process_styles(&self) {
-        unsafe { libass_sys::ass_process_force_style(self.track) }
+        unsafe { libass_sys::ass_process_force_style(self.track.as_ptr()) }
     }
 
     /// Enable or disable features for the track.
     /// Will return as Some if successful. Will return None if the status
     /// of the feature is unknown.
     pub fn set_feature(&self, feat: Feature, enable: bool) -> Option<()> {
-        let code =
-            unsafe { libass_sys::ass_track_set_feature(self.track, feat as _, enable.into()) };
+        let code = unsafe {
+            libass_sys::ass_track_set_feature(self.track.as_ptr(), feat as _, enable.into())
+        };
 
         match code {
             0 => Some(()),
@@ -36,7 +37,7 @@ impl Track<'_> {
 
     /// Allocate new style for track.
     pub fn alloc_style(&self) -> Result<Style, AllocError> {
-        let code = unsafe { libass_sys::ass_alloc_style(self.track) };
+        let code = unsafe { libass_sys::ass_alloc_style(self.track.as_ptr()) };
         if code >= 0 {
             Ok(Style(code, self))
         } else {
@@ -46,7 +47,7 @@ impl Track<'_> {
 
     /// Allocate new event handle
     pub fn alloc_event(&self) -> Result<Event, AllocError> {
-        let code = unsafe { libass_sys::ass_alloc_event(self.track) };
+        let code = unsafe { libass_sys::ass_alloc_event(self.track.as_ptr()) };
 
         if code >= 0 {
             Ok(Event(code, self))
@@ -71,7 +72,11 @@ impl Track<'_> {
 
         match data.len().try_into() {
             Ok(length) => unsafe {
-                libass_sys::ass_process_data(self.track, data.as_ptr().cast_mut() as _, length);
+                libass_sys::ass_process_data(
+                    self.track.as_ptr(),
+                    data.as_ptr().cast_mut() as _,
+                    length,
+                );
                 Ok(())
             },
             Err(_) => Err(SliceTooLong(
@@ -93,7 +98,7 @@ impl Track<'_> {
         match data.len().try_into() {
             Ok(length) => unsafe {
                 libass_sys::ass_process_codec_private(
-                    self.track,
+                    self.track.as_ptr(),
                     data.as_ptr().cast_mut() as _,
                     length,
                 );
@@ -114,7 +119,7 @@ impl Track<'_> {
     fn process_chunk(&self, data: &str, timestamp: i64, duration: i64) {
         unsafe {
             libass_sys::ass_process_chunk(
-                self.track,
+                self.track.as_ptr(),
                 data.as_ptr().cast_mut() as _,
                 data.len().try_into().unwrap(),
                 timestamp,
@@ -132,7 +137,7 @@ impl Drop for Track<'_> {
         // This specific function doesn't need to be called before
         // the library is, but most of the methods on it can't be called
         // after the library is dropped.
-        unsafe { libass_sys::ass_free_track(self.track) }
+        unsafe { libass_sys::ass_free_track(self.track.as_ptr()) }
     }
 }
 

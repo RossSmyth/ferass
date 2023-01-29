@@ -7,7 +7,7 @@ repository = "https://github.com/RossSmyth/ferass"
 readme = "README.md"
 license = "BlueOak-1.0.0"
 
-excluse = [
+exclude = [
   "/.github/",
 ]
 
@@ -21,7 +21,8 @@ members = ["libass-sys"]
 
 [dependencies]
 bitflags = "1.3.2"
-image = { version = "0.24.5", default-features = false }
+imgref = "1.9.4"
 libass-sys = { version = "0.1.0", path = "libass-sys" }
 libc = "0.2.139"
 thiserror = "1.0.38"
+time = { version = "0.3.17", default-features = false }

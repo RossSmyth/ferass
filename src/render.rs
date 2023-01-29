@@ -5,7 +5,9 @@ use std::{
     marker::PhantomData,
     mem::ManuallyDrop,
     path::PathBuf,
+    ptr::NonNull,
 };
+use time::Duration;
 
 use libass_sys;
 use thiserror::Error;
@@ -18,7 +20,7 @@ use crate::{library::FontProvider, Library, Track};
 #[derive(Debug, PartialEq, Clone)]
 #[allow(clippy::missing_docs_in_private_items)]
 pub struct Renderer<'lib> {
-    pub(crate) renderer: *mut libass_sys::ASS_Renderer,
+    pub(crate) renderer: NonNull<libass_sys::ASS_Renderer>,
     pub(crate) data: PhantomData<libass_sys::ASS_Renderer>,
     pub(crate) parent: &'lib Library,
 }
@@ -37,7 +39,7 @@ impl<'lib> Renderer<'lib> {
         // Along with some other stuff that I think is safe
         unsafe {
             libass_sys::ass_set_frame_size(
-                self.renderer,
+                self.renderer.as_ptr(),
                 width.try_into().unwrap_or(0),
                 height.try_into().unwrap_or(0),
             )
@@ -58,7 +60,7 @@ impl<'lib> Renderer<'lib> {
         // This is basically just a field setter.
         unsafe {
             libass_sys::ass_set_storage_size(
-                self.renderer,
+                self.renderer.as_ptr(),
                 width.try_into().unwrap_or(0),
                 height.try_into().unwrap_or(0),
             )
@@ -70,7 +72,7 @@ impl<'lib> Renderer<'lib> {
     pub fn set_shaper(&self, level: ShapingLevel) {
         // Safety:
         // Just a setter
-        unsafe { libass_sys::ass_set_shaper(self.renderer, level as _) }
+        unsafe { libass_sys::ass_set_shaper(self.renderer.as_ptr(), level as _) }
     }
 
     /// Set frame margins.
@@ -100,7 +102,7 @@ impl<'lib> Renderer<'lib> {
         // Just a setter
         unsafe {
             libass_sys::ass_set_margins(
-                self.renderer,
+                self.renderer.as_ptr(),
                 top_margin,
                 bottom_margin,
                 left_margin,
@@ -112,7 +114,7 @@ impl<'lib> Renderer<'lib> {
     /// Whether margins should be used for placing regular events.
     pub fn use_margins(&self, r#use: bool) {
         // Safety: setter
-        unsafe { libass_sys::ass_set_use_margins(self.renderer, r#use as _) }
+        unsafe { libass_sys::ass_set_use_margins(self.renderer.as_ptr(), r#use as _) }
     }
 
     /// Set pixel aspect ratio correction. This is the ratio of pixel width to pixel height.
@@ -133,13 +135,13 @@ impl<'lib> Renderer<'lib> {
     /// ass_set_frame_size().
     pub fn set_pixel_aspect(&self, aspect_ratio: f64) {
         // Safety: setter
-        unsafe { libass_sys::ass_set_pixel_aspect(self.renderer, aspect_ratio) }
+        unsafe { libass_sys::ass_set_pixel_aspect(self.renderer.as_ptr(), aspect_ratio) }
     }
 
     /// Set a fixed font scaling factor.
     pub fn set_font_scale(&self, scale: f64) {
         // Safety: setter
-        unsafe { libass_sys::ass_set_font_scale(self.renderer, scale) }
+        unsafe { libass_sys::ass_set_font_scale(self.renderer.as_ptr(), scale) }
     }
 
     /// Set font hinting method
@@ -154,14 +156,14 @@ impl<'lib> Renderer<'lib> {
     /// disable hinting.
     pub fn set_font_hinting(&self, method: FontHinting) {
         // Safety: setter
-        unsafe { libass_sys::ass_set_hinting(self.renderer, method as _) }
+        unsafe { libass_sys::ass_set_hinting(self.renderer.as_ptr(), method as _) }
     }
 
     /// Set line spacing. Will not be scaled with frame size.
     ///
     /// This spacing is in pixels.
     pub fn set_line_spacing(&self, spacing: f64) {
-        unsafe { libass_sys::ass_set_line_spacing(self.renderer, spacing) }
+        unsafe { libass_sys::ass_set_line_spacing(self.renderer.as_ptr(), spacing) }
     }
 
     /// Set vertical line position in percent.
@@ -174,7 +176,9 @@ impl<'lib> Renderer<'lib> {
     /// 100 = on top
     pub fn set_line_position(&self, position: f64) {
         // Safety: setter
-        unsafe { libass_sys::ass_set_line_position(self.renderer, position.clamp(0.0, 100.0)) }
+        unsafe {
+            libass_sys::ass_set_line_position(self.renderer.as_ptr(), position.clamp(0.0, 100.0))
+        }
     }
 
     /// Set font lookup defaults.
@@ -229,7 +233,7 @@ impl<'lib> Renderer<'lib> {
         // ferrisclueless
         unsafe {
             libass_sys::ass_set_fonts(
-                self.renderer,
+                self.renderer.as_ptr(),
                 font_out,
                 family_out,
                 font_provider as _,
@@ -252,7 +256,9 @@ impl<'lib> Renderer<'lib> {
     /// can only be implemented on "best effort" basis, and has to rely on heuristics that can
     /// easily break.
     pub fn set_selective_style_override_flags(&self, flags: OverrideBits) {
-        unsafe { libass_sys::ass_set_selective_style_override_enabled(self.renderer, flags.bits) }
+        unsafe {
+            libass_sys::ass_set_selective_style_override_enabled(self.renderer.as_ptr(), flags.bits)
+        }
     }
 
     /// Set style for selective style override.
@@ -277,7 +283,7 @@ impl<'lib> Renderer<'lib> {
         // setter
         unsafe {
             libass_sys::ass_set_cache_limits(
-                self.renderer,
+                self.renderer.as_ptr(),
                 glyph_max.try_into().unwrap_or(i32::MAX),
                 bitmap_cache.try_into().unwrap_or(i32::MAX),
             )
@@ -285,12 +291,40 @@ impl<'lib> Renderer<'lib> {
     }
 
     /// Render a frame, producing a list of images.
-    /// TODO: time stuff
-    /// TODO: Image stuff
     /// TODO: wut is detect change
+    /// TODO: Linked list things
+    /// TODO: How does this need to be called?
+    /// It provides a linked list of images, but what is that linked list? Is it for the entire
+    /// track after the timestamp provided, or must you call the function again for the next
+    /// timestamp?
     #[allow(dead_code, unused_variables)]
-    fn render_frame(&self, track: &Track, timestamp: (), detect_change: ()) -> () {
-        todo!("Make image type(s) and get time types and stuff")
+    fn render_frame(
+        &self,
+        track: &Track,
+        timestamp: &Duration,
+        detect_change: &mut Option<ChangeDetection>,
+    ) -> Option<*const ()> {
+        let mut out_value = 0;
+        let out_ptr = match detect_change {
+            Some(val) => {
+                out_value = *val as i32;
+                &mut out_value as *mut i32
+            }
+            None => core::ptr::null_mut(),
+        };
+
+        let image_out = NonNull::new(unsafe {
+            libass_sys::ass_render_frame(
+                self.renderer.as_ptr(),
+                track.track.as_ptr(),
+                // Not really the proper error handling but oh well.
+                timestamp.whole_milliseconds().try_into().ok()?,
+                out_ptr,
+            )
+        });
+
+        *detect_change = detect_change.map(|_| out_value.try_into().expect("Libass has changed and can return invalid values from the detect_change out ptr in ass_render_frame"));
+        image_out.map(|inner| inner.as_ptr().cast_const().cast())
     }
 }
 
@@ -299,7 +333,7 @@ impl Drop for Renderer<'_> {
         // Safety:
         // :ferrisclueless:
         // I think it's safe to call. It just frees all it's fields.
-        unsafe { libass_sys::ass_renderer_done(self.renderer) }
+        unsafe { libass_sys::ass_renderer_done(self.renderer.as_ptr()) }
     }
 }
 
@@ -458,4 +492,35 @@ pub enum FontHinting {
     Light = libass_sys::ASS_Hinting::ASS_HINTING_LIGHT,
     Normal = libass_sys::ASS_Hinting::ASS_HINTING_NORMAL,
     Native = libass_sys::ASS_Hinting::ASS_HINTING_NATIVE,
+}
+
+/// Describes how new images differ from the previous ones.
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[non_exhaustive]
+#[repr(i32)]
+pub enum ChangeDetection {
+    /// There is no change.
+    Identical = 0,
+    /// The content is the same, but they are in different position.
+    DifferentPositions = 1,
+    /// The entire content is different.
+    DifferentContent = 2,
+}
+
+/// Conversion from i32 to value failed.
+#[derive(Error, Debug)]
+#[error("Failed to convert from int to {0}. Invalid value of {1} found instead.")]
+pub struct FromIntError(String, i32);
+
+impl TryFrom<i32> for ChangeDetection {
+    type Error = FromIntError;
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        use ChangeDetection::*;
+        match value {
+            0 => Ok(Identical),
+            1 => Ok(DifferentPositions),
+            2 => Ok(DifferentContent),
+            val => Err(FromIntError("ChangeDetection".to_string(), val)),
+        }
+    }
 }
